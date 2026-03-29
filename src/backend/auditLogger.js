@@ -42,6 +42,12 @@ class AuditLogger {
       .filter(Boolean)
       .reverse();
   }
+
+  clear() {
+    this.ensureDir();
+    fs.writeFileSync(this.filePath, "", "utf8");
+    return { cleared: true, clearedAt: new Date().toISOString() };
+  }
 }
 
 module.exports = {

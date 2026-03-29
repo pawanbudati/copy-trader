@@ -16,8 +16,8 @@ class FileStore {
   deriveKey() {
     const host = os.hostname();
     const user = os.userInfo().username;
-    const seed = `${host}:${user}:alice-copy-trader:v1`;
-    return crypto.pbkdf2Sync(seed, "alice-copy-trader-salt", 120000, 32, "sha256");
+    const seed = `${host}:${user}:upstox-copy-trader:v1`;
+    return crypto.pbkdf2Sync(seed, "upstox-copy-trader-salt", 120000, 32, "sha256");
   }
 
   encrypt(plainText) {

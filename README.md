@@ -1,79 +1,99 @@
-# Alice Copy Trader (Electron Scaffold)
+# Multi Broker Copy Trader (Electron)
 
-Desktop app scaffold for leader/follower trade replication across multiple accounts.
+Desktop app for leader/follower trade replication across multiple broker accounts.
 
-## What is implemented
+Supported broker types:
 
-- Electron desktop shell with single dashboard screen.
-- Multi-account management (add/remove/set leader).
-- Daily login flow for each account (mocked broker by default).
-- Instrument search (indices and option contracts in mock mode).
-- Leader order placement with follower replication.
-- Exit leader order and cascade exit to followers.
-- Per-account dashboard cards for funds, P/L and open positions.
-- Local encrypted persistence for account/session/order-link state.
-- Theme switching with `System`, `Light`, and `Dark` modes.
-- Per-account risk policy: quantity multiplier, max qty, max loss/day, margin guard.
-- One-click emergency stop for follower copy trading.
-- JSONL audit trail for login/order/risk/emergency actions.
+- Upstox
+- Alice Blue
+- Kotak Neo
+
+## Features included
+
+- Multi-account setup with leader/follower roles.
+- Broker dropdown while adding accounts with broker-specific required fields.
+- API routing by account broker type:
+  - Upstox accounts use Upstox APIs.
+  - Alice Blue accounts use Alice Blue APIs.
+  - Kotak Neo accounts use Kotak Neo APIs.
+- Copy trading: place from leader -> replicate to followers.
+- Exit leader trade -> cascade exit to followers.
+- Follower requests are processed in parallel (`Promise.allSettled`) so one failure does not block others.
+- Instrument search for indexes/options.
+- Favorite instruments list for quick reuse in order entry.
+- Lot-based order entry (`lots x lot size`).
+- Per-account risk controls:
+  - quantity mode (multiplier/fixed)
+  - max order quantity
+  - max daily loss
+  - margin guard + minimum funds
+- Emergency stop for follower copy.
+- Audit logs + clear logs action.
+- In-app modal dialogs for login/risk/confirm flows (no native `prompt()` dependency).
+- Dedicated Alice Blue login form modal with separate fields.
+- Tabbed UI: Accounts, Search, Trade, Dashboard, Audit.
+- Theme modes: `System`, `Light`, `Dark`.
 
 ## Project structure
 
-- `main.js`: Electron startup + IPC registration.
+- `main.js`: Electron boot + IPC routes.
 - `src/preload.js`: safe renderer bridge.
-- `src/backend/store.js`: encrypted file store for runtime state.
-- `src/backend/engine.js`: account management and copy-trading logic.
-- `src/backend/mockAliceClient.js`: runnable mock broker adapter.
-- `src/backend/aliceClient.js`: live Alice REST adapter + mock switch.
+- `src/backend/store.js`: encrypted local persistence.
+- `src/backend/engine.js`: copy-trading orchestration and risk checks.
+- `src/backend/brokers.js`: broker constants and normalization.
+- `src/backend/brokerFactory.js`: broker client router.
+- `src/backend/upstoxClient.js`: Upstox live client.
+- `src/backend/aliceBlueClient.js`: Alice Blue live client.
+- `src/backend/kotakNeoClient.js`: Kotak Neo live client.
+- `src/backend/mockBrokerClient.js`: mock adapter for safe local testing.
 - `src/backend/auditLogger.js`: append-only audit logger.
-- `src/renderer/`: UI (`index.html`, `styles.css`, `app.js`).
+- `src/renderer/`: desktop UI.
 
 ## Run
-
-```bash
-npm install
-npm start
-```
-
-PowerShell on this machine blocks direct npm scripts; use:
 
 ```bash
 cmd /c npm install
 cmd /c npm start
 ```
 
-## Real Alice Blue integration
+## Mock vs live mode
 
-This scaffold defaults to mock mode.
+Default is mock mode.
 
-- Keep mock mode: `USE_MOCK_BROKER=true` (default)
-- Switch to live mode: `USE_MOCK_BROKER=false`
+- mock mode: `USE_MOCK_BROKER=true` (default)
+- live mode: `USE_MOCK_BROKER=false`
 
-Live mode is wired against Alice REST endpoints (matching pya3 flow):
+PowerShell example:
 
-- Login: `customer/getAPIEncpkey` -> `customer/getUserSID`
-- Search: `DataApiService/v2/exchange/getScripForSearchAPI`
-- Place order: `placeOrder/executePlaceOrder`
-- Funds: `limits/getRmsLimits`
-- Positions/PnL: `positionAndHoldings/positionBook`
+```bash
+set USE_MOCK_BROKER=false && cmd /c npm start
+```
 
-Optional environment variables:
+## Optional API base overrides
 
-- `ALICE_BASE_API` (defaults to `https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/`)
-- `USE_MOCK_BROKER=false` to enable live broker calls
+- `UPSTOX_API_BASE` (default `https://api.upstox.com`)
+- `UPSTOX_ORDER_BASE` (default `https://api-hft.upstox.com`)
+- `ALICE_BLUE_API_BASE` (default `https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/`)
+- `KOTAK_NEO_SESSION_BASE` (default `https://mis.kotaksecurities.com`)
+- `KOTAK_NEO_TRADING_BASE` (default `https://mis.kotaksecurities.com`)
+- `KOTAK_NEO_FIN_KEY` (default `neotradeapi`)
 
-If your account requires daily primary login, complete normal ANT/mobile login first.
+## Login flow notes
 
-## Audit log file
+- Upstox:
+  - Supports `Auth URL` + local callback capture (`localhost` / `127.0.0.1` redirect with explicit port).
+  - Also supports manual login by code/redirect URL/access token.
+- Alice Blue:
+  - Manual login supports session ID directly.
+  - If session ID is missing, client attempts session generation using Alice user ID + API key.
+- Kotak Neo:
+  - Manual login supports:
+    - `accessToken|tradingSid|serverId`
+    - JSON payload with fields such as `accessToken`, `tradingSid`, `serverId`, `consumerKey`
+  - Interactive TOTP flow is supported if JSON includes `mobileNumber`, `ucc`, `totp`, `mpin`.
 
-- Stored in Electron user-data folder under `data/audit.log`.
-- Format: one JSON object per line.
-- UI also shows recent entries in the `Audit Logs` panel.
+## Audit log
 
-## Safety notes before live deployment
-
-- Use per-account risk limits (max qty, max orders/day, max loss/day).
-- Add pre-trade margin checks and block partial replication when needed.
-- Add idempotency keys to avoid duplicate orders on retries.
-- Add explicit emergency kill switch and trading time window rules.
-- Use OS credential vault for API keys/session storage in production.
+- Stored in Electron user data folder at `data/audit.log`.
+- One JSON object per line.
+- UI `Audit Logs` section shows recent entries.

@@ -3,17 +3,39 @@ const crypto = require("crypto");
 const accountState = new Map();
 
 const baseInstruments = [
-  { exchange: "INDICES", symbol: "NIFTY 50", token: "26000", type: "INDEX" },
-  { exchange: "INDICES", symbol: "NIFTY BANK", token: "26009", type: "INDEX" },
-  { exchange: "INDICES", symbol: "NIFTY FIN SERVICE", token: "26037", type: "INDEX" },
-  { exchange: "INDICES", symbol: "SENSEX", token: "1", type: "INDEX" },
+  {
+    exchange: "NSE",
+    segment: "NSE_INDEX",
+    symbol: "NIFTY 50",
+    tradingSymbol: "NIFTY 50",
+    instrumentKey: "NSE_INDEX|Nifty 50",
+    token: "NSE_INDEX|Nifty 50",
+    type: "INDEX",
+    lotSize: 1,
+  },
+  {
+    exchange: "NSE",
+    segment: "NSE_INDEX",
+    symbol: "NIFTY BANK",
+    tradingSymbol: "NIFTY BANK",
+    instrumentKey: "NSE_INDEX|Nifty Bank",
+    token: "NSE_INDEX|Nifty Bank",
+    type: "INDEX",
+    lotSize: 1,
+  },
+  {
+    exchange: "NSE",
+    segment: "NSE_INDEX",
+    symbol: "NIFTY FIN SERVICE",
+    tradingSymbol: "NIFTY FIN SERVICE",
+    instrumentKey: "NSE_INDEX|Nifty Fin Service",
+    token: "NSE_INDEX|Nifty Fin Service",
+    type: "INDEX",
+    lotSize: 1,
+  },
 ];
 
-const optionTemplates = [
-  "NIFTY",
-  "BANKNIFTY",
-  "FINNIFTY",
-];
+const optionTemplates = ["NIFTY", "BANKNIFTY", "FINNIFTY"];
 
 function hashCode(str) {
   let hash = 0;
@@ -35,34 +57,43 @@ function ensureState(accountId) {
   if (!accountState.has(accountId)) {
     accountState.set(accountId, {
       loggedIn: false,
-      sessionToken: null,
+      accessToken: null,
       orders: [],
       positions: new Map(),
-      fundsBase: 150000 + (hashCode(accountId) % 200000),
+      fundsBase: 200000 + (hashCode(accountId) % 350000),
     });
   }
   return accountState.get(accountId);
 }
 
 function buildOptionContracts() {
-  const monthCode = "APR";
-  const yearCode = "26";
   const strikes = [22000, 22100, 22200, 22300, 22400, 22500];
+  const expiry = "2026-04-30";
   const contracts = [];
 
   optionTemplates.forEach((indexName) => {
     strikes.forEach((strike) => {
       contracts.push({
-        exchange: "NFO",
-        symbol: `${indexName}${yearCode}${monthCode}${strike}CE`,
-        token: `${hashCode(`${indexName}-${strike}-CE`)}`,
-        type: "OPTION",
+        exchange: "NSE",
+        segment: "NSE_FO",
+        symbol: `${indexName} ${strike} CE`,
+        tradingSymbol: `${indexName} ${strike} CE APR 26`,
+        instrumentKey: `NSE_FO|${hashCode(`${indexName}-${strike}-CE`)}`,
+        token: `NSE_FO|${hashCode(`${indexName}-${strike}-CE`)}`,
+        type: "CE",
+        lotSize: indexName === "BANKNIFTY" ? 15 : 50,
+        expiry,
       });
       contracts.push({
-        exchange: "NFO",
-        symbol: `${indexName}${yearCode}${monthCode}${strike}PE`,
-        token: `${hashCode(`${indexName}-${strike}-PE`)}`,
-        type: "OPTION",
+        exchange: "NSE",
+        segment: "NSE_FO",
+        symbol: `${indexName} ${strike} PE`,
+        tradingSymbol: `${indexName} ${strike} PE APR 26`,
+        instrumentKey: `NSE_FO|${hashCode(`${indexName}-${strike}-PE`)}`,
+        token: `NSE_FO|${hashCode(`${indexName}-${strike}-PE`)}`,
+        type: "PE",
+        lotSize: indexName === "BANKNIFTY" ? 15 : 50,
+        expiry,
       });
     });
   });
@@ -72,29 +103,46 @@ function buildOptionContracts() {
 
 const instruments = [...baseInstruments, ...buildOptionContracts()];
 
-class MockAliceClient {
+class MockUpstoxClient {
   constructor(account) {
     this.account = account;
   }
 
-  async login() {
+  getAuthorizeUrl() {
+    return `https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=${encodeURIComponent(
+      this.account.clientId || "mock-client-id"
+    )}&redirect_uri=${encodeURIComponent(
+      this.account.redirectUri || "https://example.com/callback"
+    )}&state=${encodeURIComponent(`mock-${this.account.id}`)}`;
+  }
+
+  async login(options = {}) {
     const state = ensureState(this.account.id);
-    const sessionToken = crypto.randomBytes(16).toString("hex");
+    const accessToken = options.accessToken || crypto.randomBytes(16).toString("hex");
     state.loggedIn = true;
-    state.sessionToken = sessionToken;
+    state.accessToken = accessToken;
     return {
-      sessionToken,
+      accessToken,
+      refreshToken: null,
       loginAt: new Date().toISOString(),
+      userId: this.account.userId || `MOCK_${this.account.id.slice(-4)}`,
+      userName: this.account.name || "Mock User",
     };
   }
 
-  async searchInstruments({ query, exchange }) {
-    const q = (query || "").trim().toUpperCase();
-    const exch = (exchange || "").trim().toUpperCase();
+  async searchInstruments(payload = {}) {
+    const query = (payload.query || "").trim().toUpperCase();
+    const exchangeFilter = (payload.exchange || payload.exchanges || "").trim().toUpperCase();
+    const segmentFilter = (payload.segments || "").trim().toUpperCase();
+    const typeFilter = (payload.instrumentTypes || "").trim().toUpperCase();
+
     const filtered = instruments.filter((item) => {
-      const exchangeMatch = !exch || item.exchange === exch;
-      const textMatch = !q || item.symbol.toUpperCase().includes(q);
-      return exchangeMatch && textMatch;
+      const exchangeMatch = !exchangeFilter || item.exchange.toUpperCase() === exchangeFilter;
+      const segmentMatch = !segmentFilter || item.segment.toUpperCase().includes(segmentFilter);
+      const typeMatch = !typeFilter || item.type.toUpperCase().includes(typeFilter);
+      const text = `${item.symbol} ${item.tradingSymbol}`.toUpperCase();
+      const textMatch = !query || text.includes(query);
+      return exchangeMatch && segmentMatch && typeMatch && textMatch;
     });
     return filtered.slice(0, 60);
   }
@@ -109,13 +157,15 @@ class MockAliceClient {
     const fillPrice =
       order.orderType === "LIMIT" && Number(order.price) > 0
         ? Number(order.price)
-        : priceForSymbol(order.symbol);
+        : priceForSymbol(order.symbol || order.instrumentKey);
     const direction = order.side === "BUY" ? 1 : -1;
     const qty = Number(order.quantity);
     const signedQty = direction * qty;
 
-    const position = state.positions.get(order.symbol) || {
-      symbol: order.symbol,
+    const key = order.instrumentKey || `${order.exchange}:${order.symbol}`;
+    const position = state.positions.get(key) || {
+      key,
+      symbol: order.symbol || order.instrumentKey,
       netQty: 0,
       avgPrice: 0,
     };
@@ -123,24 +173,22 @@ class MockAliceClient {
     const oldQty = position.netQty;
     const oldValue = position.avgPrice * oldQty;
     const newQty = oldQty + signedQty;
-
     let avgPrice = position.avgPrice;
     if (newQty !== 0) {
       avgPrice = (oldValue + fillPrice * signedQty) / newQty;
     } else {
       avgPrice = 0;
     }
-
     position.netQty = newQty;
     position.avgPrice = Number(avgPrice.toFixed(2));
-    state.positions.set(order.symbol, position);
+    state.positions.set(key, position);
 
     const createdOrder = {
-      orderId: `MOCK-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
+      orderId: `UPMOCK-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`,
       accountId: this.account.id,
       userId: this.account.userId,
       symbol: order.symbol,
-      exchange: order.exchange,
+      instrumentKey: order.instrumentKey,
       side: order.side,
       quantity: qty,
       price: fillPrice,
@@ -164,15 +212,23 @@ class MockAliceClient {
     if (!state.loggedIn) {
       throw new Error(`Account ${this.account.userId} is not logged in`);
     }
+    if (reference?.order) {
+      const reverseSide = reference.order.side === "BUY" ? "SELL" : "BUY";
+      return this.placeOrder({
+        ...reference.order,
+        side: reverseSide,
+        orderType: "MARKET",
+        price: 0,
+      });
+    }
 
     const sourceOrder = state.orders.find((item) => item.orderId === reference.orderId);
     if (!sourceOrder) {
       throw new Error(`Order not found: ${reference.orderId}`);
     }
-
     const reverseSide = sourceOrder.side === "BUY" ? "SELL" : "BUY";
     return this.placeOrder({
-      exchange: sourceOrder.exchange,
+      instrumentKey: sourceOrder.instrumentKey,
       symbol: sourceOrder.symbol,
       side: reverseSide,
       quantity: sourceOrder.quantity,
@@ -215,7 +271,6 @@ class MockAliceClient {
         pnl: Number(value.toFixed(2)),
       });
     }
-
     return {
       mtm: Number(mtm.toFixed(2)),
       positions,
@@ -224,5 +279,5 @@ class MockAliceClient {
 }
 
 module.exports = {
-  MockAliceClient,
+  MockUpstoxClient,
 };

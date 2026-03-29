@@ -1,8 +1,8 @@
 const path = require("path");
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, shell } = require("electron");
 const { TradeEngine } = require("./src/backend/engine");
 const { FileStore } = require("./src/backend/store");
-const { createBrokerClient } = require("./src/backend/aliceClient");
+const { createBrokerClient } = require("./src/backend/brokerFactory");
 const { AuditLogger } = require("./src/backend/auditLogger");
 
 const dataDir = path.join(app.getPath("userData"), "data");
@@ -61,7 +61,32 @@ function wireIpc() {
     "accounts:updateRisk",
     safe((payload) => engine.updateRisk(payload.id, payload.risk))
   );
-  ipcMain.handle("accounts:login", safe((payload) => engine.loginAccount(payload.id)));
+  ipcMain.handle(
+    "accounts:getAuthUrl",
+    safe((payload) => engine.getAuthorizeUrl(payload.id))
+  );
+  ipcMain.handle(
+    "accounts:startAuthFlow",
+    safe(async (payload) => {
+      const result = await engine.startAuthFlow(payload.id, payload);
+      if (payload.openBrowser !== false) {
+        await shell.openExternal(result.url);
+      }
+      return result;
+    })
+  );
+  ipcMain.handle(
+    "accounts:getAuthFlowStatus",
+    safe((payload) => engine.getAuthFlowStatus(payload.id))
+  );
+  ipcMain.handle(
+    "accounts:cancelAuthFlow",
+    safe((payload) => engine.cancelAuthFlow(payload.id))
+  );
+  ipcMain.handle(
+    "accounts:login",
+    safe((payload) => engine.loginAccount(payload.id, payload))
+  );
   ipcMain.handle("accounts:loginAll", safe(() => engine.loginAllAccounts()));
   ipcMain.handle("system:getStatus", safe(() => engine.getSystemStatus()));
   ipcMain.handle(
@@ -72,6 +97,7 @@ function wireIpc() {
     "audit:getRecent",
     safe((payload) => engine.getRecentAudit(payload.limit || 100))
   );
+  ipcMain.handle("audit:clear", safe(() => engine.clearAudit()));
   ipcMain.handle(
     "instruments:search",
     safe((payload) => engine.searchInstruments(payload))

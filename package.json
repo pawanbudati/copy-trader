@@ -1,7 +1,7 @@
 {
-  "name": "alice-copy-trader",
+  "name": "upstox-copy-trader",
   "version": "0.1.0",
-  "description": "Electron desktop app for multi-account copy trading with Alice Blue API adapters.",
+  "description": "Electron desktop app for multi-account copy trading with Upstox API adapters.",
   "main": "main.js",
   "author": "codex",
   "license": "MIT",

@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Alice Copy Trader</title>
+    <title>Multi Broker Copy Trader</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <h1>Alice Copy Trader</h1>
-          <p>Leader account drives entries/exits. Followers copy automatically.</p>
+          <h1>Multi Broker Copy Trader</h1>
+          <p>Leader account drives entries/exits across Upstox, Alice Blue, and Kotak Neo followers.</p>
         </div>
         <div class="topbar-actions">
           <span id="emergency-pill" class="pill">Follower copy ACTIVE</span>
@@ -22,125 +22,253 @@
         </div>
       </header>
 
-      <main class="grid">
-        <section class="card">
-          <h2>Accounts</h2>
-          <form id="account-form" class="form">
-            <label>Name <input id="acc-name" required /></label>
-            <label>User ID <input id="acc-user" required /></label>
-            <label>API Key <input id="acc-key" required type="password" /></label>
-            <label>Role
-              <select id="acc-role">
-                <option value="leader">Leader</option>
-                <option value="follower">Follower</option>
-              </select>
-            </label>
-            <label>Qty Multiplier <input id="acc-multiplier" type="number" step="0.1" value="1" /></label>
-            <label>Max Order Qty <input id="acc-maxqty" type="number" min="0" value="0" /></label>
-            <label>Max Daily Loss (INR) <input id="acc-maxloss" type="number" min="0" value="0" /></label>
-            <label>Min Available Funds (INR) <input id="acc-minfunds" type="number" min="0" value="0" /></label>
-            <label>Market Price Fallback <input id="acc-fallback" type="number" min="1" value="100" /></label>
-            <label class="checkbox-row">
-              <input id="acc-margin-guard" type="checkbox" />
-              Enable Margin Guard
-            </label>
-            <button class="btn primary" type="submit">Add Account</button>
-          </form>
+      <nav id="top-tab-nav" class="tab-nav" role="tablist" aria-label="Main sections">
+        <button class="tab-btn is-active" type="button" role="tab" aria-selected="true" data-tab="accounts">
+          Accounts
+        </button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="search">
+          Search
+        </button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="trade">
+          Trade
+        </button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="dashboard">
+          Dashboard
+        </button>
+        <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="audit">
+          Audit
+        </button>
+      </nav>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Risk</th>
-                  <th>Session</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="accounts-body"></tbody>
-            </table>
+      <main class="tab-panels">
+        <div class="tab-panel active" data-tab-panel="accounts">
+          <div class="accounts-layout">
+            <section class="card accounts-form-card">
+              <div class="card-head">
+                <div>
+                  <h2>Add Account</h2>
+                  <p>Connect each family account once, then login daily from the list panel.</p>
+                </div>
+              </div>
+              <form id="account-form" class="form form-single">
+                <label>Name <input id="acc-name" required /></label>
+                <label>Alias/User Label <input id="acc-user" required placeholder="FATHER / MOTHER / SELF" /></label>
+                <label>Broker
+                  <select id="acc-broker-type">
+                    <option value="upstox">Upstox</option>
+                    <option value="aliceblue">Alice Blue</option>
+                    <option value="kotakneo">Kotak Neo</option>
+                  </select>
+                </label>
+
+                <div class="broker-fields-group" data-broker="upstox">
+                  <label>Upstox Client ID <input id="acc-client-id" /></label>
+                  <label>Upstox Client Secret <input id="acc-client-secret" type="password" /></label>
+                  <label>Redirect URI <input id="acc-redirect-uri" placeholder="https://yourapp/callback" /></label>
+                  <label>Access Token (optional) <input id="acc-access-token" type="password" /></label>
+                </div>
+
+                <div class="broker-fields-group hidden" data-broker="aliceblue">
+                  <label>Alice User ID <input id="acc-alice-user-id" placeholder="AB1234" /></label>
+                  <label>Alice API Key <input id="acc-alice-api-key" type="password" /></label>
+                  <label>Session ID (optional) <input id="acc-alice-session-id" type="password" /></label>
+                </div>
+
+                <div class="broker-fields-group hidden" data-broker="kotakneo">
+                  <label>Kotak Consumer Key <input id="acc-kotak-consumer-key" /></label>
+                  <label>Kotak Access Token (optional) <input id="acc-kotak-access-token" type="password" /></label>
+                  <label>Kotak Trading SID (optional) <input id="acc-kotak-sid" /></label>
+                  <label>Kotak Server ID (optional) <input id="acc-kotak-server-id" /></label>
+                  <label>Kotak Base URL (optional) <input id="acc-kotak-base-url" placeholder="https://mis.kotaksecurities.com" /></label>
+                  <label>Kotak UCC (optional) <input id="acc-kotak-ucc" /></label>
+                  <label>Kotak Mobile (optional) <input id="acc-kotak-mobile" placeholder="91XXXXXXXXXX" /></label>
+                </div>
+                <label>Role
+                  <select id="acc-role">
+                    <option value="leader">Leader</option>
+                    <option value="follower">Follower</option>
+                  </select>
+                </label>
+                <label>Qty Mode
+                  <select id="acc-qty-mode">
+                    <option value="multiplier">Multiplier</option>
+                    <option value="fixed">Fixed Qty</option>
+                  </select>
+                </label>
+                <label>Qty Multiplier <input id="acc-multiplier" type="number" step="0.1" value="1" /></label>
+                <label>Fixed Qty <input id="acc-fixed-qty" type="number" min="1" value="1" /></label>
+                <label>Max Order Qty <input id="acc-maxqty" type="number" min="0" value="0" /></label>
+                <label>Max Daily Loss (INR) <input id="acc-maxloss" type="number" min="0" value="0" /></label>
+                <label>Min Available Funds (INR) <input id="acc-minfunds" type="number" min="0" value="0" /></label>
+                <label>Market Price Fallback <input id="acc-fallback" type="number" min="1" value="100" /></label>
+                <label class="checkbox-row">
+                  <input id="acc-margin-guard" type="checkbox" />
+                  Enable Margin Guard
+                </label>
+                <button class="btn primary" type="submit">Add Account</button>
+              </form>
+              <small class="hint-text">
+                Login flow: <strong>Upstox</strong> supports Auth URL + local callback capture.
+                <strong>Alice Blue</strong> and <strong>Kotak Neo</strong> usually use manual Login with session/token details.
+              </small>
+            </section>
+
+            <section class="card accounts-list-card">
+              <div class="card-head">
+                <div>
+                  <h2>Added Accounts</h2>
+                  <p>Set leader, run auth/login, tune risk, and monitor account session state.</p>
+                </div>
+              </div>
+              <div class="table-wrap accounts-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Alias</th>
+                      <th>Broker</th>
+                      <th>Broker User</th>
+                      <th>Role</th>
+                      <th>Status</th>
+                      <th>Auth Flow</th>
+                      <th>Config</th>
+                      <th>Risk</th>
+                      <th>Session</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="accounts-body"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
-        </section>
+        </div>
 
-        <section class="card">
-          <h2>Instrument Search</h2>
-          <div class="search-row">
-            <input id="search-query" placeholder="NIFTY / BANKNIFTY / strike" />
-            <select id="search-exchange">
-              <option value="">All Exchanges</option>
-              <option value="INDICES">INDICES</option>
-              <option value="NFO">NFO</option>
-            </select>
-            <button id="search-btn" class="btn">Search</button>
-          </div>
-          <div id="search-results" class="list"></div>
-        </section>
-
-        <section class="card">
-          <h2>Place Leader Order</h2>
-          <form id="order-form" class="form">
-            <label>Exchange <input id="ord-exchange" value="NFO" required /></label>
-            <label>Symbol <input id="ord-symbol" required /></label>
-            <label>Side
-              <select id="ord-side">
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
+        <div class="tab-panel" data-tab-panel="search">
+          <section class="card">
+            <h2>Instrument Search</h2>
+            <div class="search-row two">
+              <input id="search-query" placeholder="NIFTY / BANKNIFTY / strike / stock" />
+              <select id="search-exchanges">
+                <option value="">All Exchanges</option>
+                <option value="NSE">NSE</option>
+                <option value="BSE">BSE</option>
+                <option value="MCX">MCX</option>
               </select>
-            </label>
-            <label>Qty <input id="ord-qty" type="number" min="1" value="1" required /></label>
-            <label>Order Type
-              <select id="ord-type">
-                <option value="MARKET">MARKET</option>
-                <option value="LIMIT">LIMIT</option>
+            </div>
+            <div class="search-row">
+              <select id="search-segments">
+                <option value="">All Segments</option>
+                <option value="INDEX">INDEX</option>
+                <option value="FO">FO</option>
+                <option value="OPT">OPT</option>
+                <option value="EQ">EQ</option>
               </select>
-            </label>
-            <label>Limit Price <input id="ord-price" type="number" step="0.05" value="0" /></label>
-            <label>Product
-              <select id="ord-product">
-                <option value="INTRADAY">INTRADAY</option>
-                <option value="DELIVERY">DELIVERY</option>
+              <select id="search-types">
+                <option value="">All Types</option>
+                <option value="CE">CE</option>
+                <option value="PE">PE</option>
+                <option value="FUT">FUT</option>
+                <option value="EQ">EQ</option>
+                <option value="INDEX">INDEX</option>
               </select>
-            </label>
-            <label>Target Spread <input id="ord-target" type="number" step="0.05" value="0" /></label>
-            <label>Stoploss Spread <input id="ord-stoploss" type="number" step="0.05" value="0" /></label>
-            <button class="btn primary" type="submit">Place & Copy</button>
-          </form>
-        </section>
+              <input id="search-expiry" placeholder="expiry (optional, e.g. current_week or 2026-04-30)" />
+            </div>
+            <small>Search runs automatically while typing (debounced).</small>
+            <div id="search-results" class="list"></div>
+            <h3 class="subheading">Favorites</h3>
+            <div id="favorites-list" class="list"></div>
+          </section>
+        </div>
 
-        <section class="card">
-          <h2>Open Leader Orders</h2>
-          <div id="orders-list" class="list"></div>
-        </section>
+        <div class="tab-panel" data-tab-panel="trade">
+          <section class="card">
+            <h2>Place Leader Order</h2>
+            <form id="order-form" class="form">
+              <label>Instrument Key <input id="ord-instrument-key" required /></label>
+              <label>Trading Symbol <input id="ord-symbol" required /></label>
+              <label>Lot Size <input id="ord-lot-size" type="number" min="1" value="1" readonly /></label>
+              <label>Side
+                <select id="ord-side">
+                  <option value="BUY">BUY</option>
+                  <option value="SELL">SELL</option>
+                </select>
+              </label>
+              <label>Lot Multiplier <input id="ord-qty" type="number" min="1" value="1" required /></label>
+              <label>Order Type
+                <select id="ord-type">
+                  <option value="MARKET">MARKET</option>
+                  <option value="LIMIT">LIMIT</option>
+                </select>
+              </label>
+              <label>Limit Price <input id="ord-price" type="number" step="0.05" value="0" /></label>
+              <label>Product
+                <select id="ord-product">
+                  <option value="INTRADAY">INTRADAY</option>
+                  <option value="DELIVERY">DELIVERY</option>
+                  <option value="MTF">MTF</option>
+                </select>
+              </label>
+              <label>Target Spread <input id="ord-target" type="number" step="0.05" value="0" /></label>
+              <label>Stoploss Spread <input id="ord-stoploss" type="number" step="0.05" value="0" /></label>
+              <button class="btn primary" type="submit">Place & Copy</button>
+            </form>
+            <small id="ord-lot-indicator">Final Qty = 1 x 1 = 1</small>
+          </section>
 
-        <section class="card wide">
-          <h2>Dashboard</h2>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Account</th>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Funds</th>
-                  <th>Available</th>
-                  <th>P/L</th>
-                  <th>Positions</th>
-                </tr>
-              </thead>
-              <tbody id="dashboard-body"></tbody>
-            </table>
-          </div>
-        </section>
+          <section class="card">
+            <h2>Open Leader Orders</h2>
+            <div id="orders-list" class="list"></div>
+          </section>
+        </div>
 
-        <section class="card wide">
-          <h2>Audit Logs</h2>
-          <div id="audit-list" class="list"></div>
-        </section>
+        <div class="tab-panel" data-tab-panel="dashboard">
+          <section class="card">
+            <h2>Dashboard</h2>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Alias</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Funds</th>
+                    <th>Available</th>
+                    <th>P/L</th>
+                    <th>Positions</th>
+                  </tr>
+                </thead>
+                <tbody id="dashboard-body"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-panel" data-tab-panel="audit">
+          <section class="card">
+            <div class="section-head">
+              <h2>Audit Logs</h2>
+              <button id="clear-logs-btn" class="btn danger">Clear Logs</button>
+            </div>
+            <div id="audit-list" class="list"></div>
+          </section>
+        </div>
       </main>
+    </div>
+
+    <div id="app-modal" class="modal hidden" aria-hidden="true">
+      <div id="modal-overlay" class="modal-overlay"></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <h3 id="modal-title"></h3>
+        <p id="modal-message"></p>
+        <input id="modal-input" class="hidden" />
+        <div id="modal-form-fields" class="modal-form-fields hidden"></div>
+        <div class="modal-actions">
+          <button id="modal-cancel-btn" class="btn" type="button">Cancel</button>
+          <button id="modal-ok-btn" class="btn primary" type="button">OK</button>
+        </div>
+      </div>
     </div>
 
     <div id="toast" class="toast hidden"></div>
