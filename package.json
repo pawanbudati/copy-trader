@@ -1,0 +1,15 @@
+{
+  "name": "alice-copy-trader",
+  "version": "0.1.0",
+  "description": "Electron desktop app for multi-account copy trading with Alice Blue API adapters.",
+  "main": "main.js",
+  "author": "codex",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "electron": "^37.2.0"
+  }
+}

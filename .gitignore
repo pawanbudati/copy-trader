@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+
+# App runtime data
+data/
+
+# OS files
+.DS_Store
+Thumbs.db
