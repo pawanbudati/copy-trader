@@ -6,6 +6,7 @@ Supported broker types:
 
 - Upstox
 - Kotak Neo
+- Alice Blue
 
 ## Features included
 
@@ -30,6 +31,7 @@ Supported broker types:
 - In-app modal dialogs for login/risk/confirm flows (no native `prompt()` dependency).
 - Tabbed UI: Accounts, Search, Trade, Dashboard, Audit.
 - Theme modes: `System`, `Light`, `Dark`.
+- Alice Blue support with auth URL + optional local callback capture or manual callback data parsing.
 
 ## Project structure
 
@@ -83,6 +85,9 @@ set USE_MOCK_BROKER=false && cmd /c npm start
     - `accessToken|tradingSid|serverId`
     - JSON payload with fields such as `accessToken`, `tradingSid`, `serverId`, `consumerKey`
   - Interactive TOTP flow is supported if JSON includes `mobileNumber`, `ucc`, `totp`, `mpin`.
+- Alice Blue:
+  - Supports `Auth URL` + local callback capture (http://localhost:<port>/... redirect URI with authCode/userId).
+  - Also supports manual login via pasted callback URL, `authCode|userId`, or JSON containing `authCode` and `userId`.
 
 ## Audit log
 
