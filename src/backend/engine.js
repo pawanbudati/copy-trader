@@ -57,8 +57,10 @@ function defaultCredentialsForBroker(brokerType) {
   const type = normalizeBrokerType(brokerType);
   if (type === BROKER_TYPES.ALICE_BLUE) {
     return {
+      aliceAppCode: "",
+      aliceApiSecret: "",
+      redirectUri: "",
       aliceUserId: "",
-      aliceApiKey: "",
       sessionId: "",
     };
   }
@@ -92,12 +94,24 @@ function normalizeCredentials(brokerType, credentials = {}, fallback = {}) {
   if (type === BROKER_TYPES.ALICE_BLUE) {
     return {
       ...defaults,
+      aliceAppCode: String(
+        merged.aliceAppCode || merged.appCode || fallback.aliceAppCode || fallback.appCode || ""
+      ).trim(),
+      aliceApiSecret: String(
+        merged.aliceApiSecret ||
+          merged.apiSecret ||
+          merged.aliceApiKey ||
+          fallback.aliceApiSecret ||
+          fallback.apiSecret ||
+          fallback.aliceApiKey ||
+          fallback.clientSecret ||
+          ""
+      ).trim(),
+      redirectUri: String(merged.redirectUri || fallback.redirectUri || "").trim(),
       aliceUserId: String(
-        merged.aliceUserId || fallback.aliceUserId || fallback.clientId || ""
-      ).trim(),
-      aliceApiKey: String(
-        merged.aliceApiKey || fallback.aliceApiKey || fallback.clientSecret || ""
-      ).trim(),
+        merged.aliceUserId || merged.userId || fallback.aliceUserId || fallback.userId || ""
+      )
+        .trim(),
       sessionId: String(
         merged.sessionId || merged.accessToken || fallback.sessionId || fallback.accessToken || ""
       ).trim(),
@@ -140,6 +154,52 @@ function normalizeUserId(value, fallbackPrefix) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function safeDecodeComponent(value) {
+  const raw = String(value || "");
+  if (!raw) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(raw);
+  } catch (_error) {
+    return raw;
+  }
+}
+
+function extractQueryParamPreservePlus(rawUrl, names = []) {
+  const source = String(rawUrl || "");
+  if (!source || !Array.isArray(names) || !names.length) {
+    return "";
+  }
+  const queryIndex = source.indexOf("?");
+  if (queryIndex < 0) {
+    return "";
+  }
+  const query = source.slice(queryIndex + 1).split("#")[0];
+  if (!query) {
+    return "";
+  }
+  const wanted = names.map((name) => String(name || "").trim().toLowerCase()).filter(Boolean);
+  for (const pair of query.split("&")) {
+    if (!pair) {
+      continue;
+    }
+    const eqIndex = pair.indexOf("=");
+    if (eqIndex <= 0) {
+      continue;
+    }
+    const key = safeDecodeComponent(pair.slice(0, eqIndex)).trim().toLowerCase();
+    if (!wanted.includes(key)) {
+      continue;
+    }
+    const value = safeDecodeComponent(pair.slice(eqIndex + 1)).trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "";
 }
 
 function authHtml(status, message) {
@@ -219,6 +279,9 @@ class TradeEngine {
         clientSecret: String(account.clientSecret || "").trim(),
         redirectUri: String(account.redirectUri || "").trim(),
         accessToken: String(account.accessToken || account.sessionToken || "").trim(),
+        appCode: String(account.appCode || account.aliceAppCode || "").trim(),
+        apiSecret: String(account.apiSecret || account.aliceApiSecret || account.aliceApiKey || "").trim(),
+        aliceUserId: String(account.aliceUserId || account.brokerUserId || "").trim(),
         tradingSid: String(account.tradingSid || "").trim(),
         serverId: String(account.serverId || "").trim(),
         baseUrl: String(account.baseUrl || "").trim(),
@@ -289,9 +352,9 @@ class TradeEngine {
     const credentials = normalizeCredentials(brokerType, account.credentials, account);
     if (brokerType === BROKER_TYPES.ALICE_BLUE) {
       return {
-        keyMasked: mask(credentials.aliceApiKey || ""),
-        hasSecondary: Boolean(credentials.aliceUserId),
-        hasRedirectUri: false,
+        keyMasked: mask(credentials.aliceAppCode || ""),
+        hasSecondary: Boolean(credentials.aliceApiSecret),
+        hasRedirectUri: Boolean(credentials.redirectUri),
       };
     }
     if (brokerType === BROKER_TYPES.KOTAK_NEO) {
@@ -399,11 +462,13 @@ class TradeEngine {
     if (brokerType === BROKER_TYPES.UPSTOX && !credentials.clientId) {
       throw new Error("Upstox client ID is required");
     }
-    if (
-      brokerType === BROKER_TYPES.ALICE_BLUE &&
-      (!credentials.aliceUserId || !credentials.aliceApiKey)
-    ) {
-      throw new Error("Alice Blue user ID and API key are required");
+    if (brokerType === BROKER_TYPES.ALICE_BLUE) {
+      if (!credentials.aliceAppCode) {
+        throw new Error("Alice Blue app code is required");
+      }
+      if (!credentials.aliceApiSecret) {
+        throw new Error("Alice Blue API Secret is required");
+      }
     }
     if (brokerType === BROKER_TYPES.KOTAK_NEO && !credentials.consumerKey) {
       throw new Error("Kotak Neo consumer key is required");
@@ -521,11 +586,16 @@ class TradeEngine {
 
   async getAuthorizeUrl(id, stateValue = null) {
     const account = this.getAccountOrThrow(id);
-    if (normalizeBrokerType(account.brokerType) !== BROKER_TYPES.UPSTOX) {
-      throw new Error("Auth URL flow is currently available only for Upstox accounts");
-    }
     const client = this.getClient(account);
+    if (!client || typeof client.getAuthorizeUrl !== "function") {
+      throw new Error(
+        `Auth URL flow is not available for ${brokerLabel(normalizeBrokerType(account.brokerType))} accounts`
+      );
+    }
     const url = client.getAuthorizeUrl(stateValue || null);
+    if (!url) {
+      throw new Error("Broker client did not return an authorization URL");
+    }
     return { url };
   }
 
@@ -546,6 +616,10 @@ class TradeEngine {
     if (flow.timer) {
       clearTimeout(flow.timer);
       flow.timer = null;
+    }
+    if (flow.poller) {
+      clearInterval(flow.poller);
+      flow.poller = null;
     }
 
     if (flow.server) {
@@ -581,6 +655,10 @@ class TradeEngine {
       clearTimeout(flow.timer);
       flow.timer = null;
     }
+    if (flow.poller) {
+      clearInterval(flow.poller);
+      flow.poller = null;
+    }
     if (flow.server) {
       await closeServer(flow.server);
       flow.server = null;
@@ -607,10 +685,196 @@ class TradeEngine {
     return this.authFlowSnapshot(accountId);
   }
 
+  async startAliceAuthFlow(id, options = {}) {
+    const account = this.getAccountOrThrow(id);
+    const client = this.getClient(account);
+    const authorizeUrl = client.getAuthorizeUrl();
+    const redirectUri = String(account.credentials?.redirectUri || "").trim();
+
+    if (!redirectUri) {
+      return {
+        url: authorizeUrl,
+        redirectUri: null,
+        stateValue: null,
+        expiresAt: null,
+        status: "manual",
+        message:
+          "Alice Blue login opened. Complete login, then use Manual Login and paste the full redirected URL containing authCode and userId.",
+      };
+    }
+
+    let redirectUrl;
+    try {
+      redirectUrl = new URL(redirectUri);
+    } catch (_error) {
+      return {
+        url: authorizeUrl,
+        redirectUri,
+        stateValue: null,
+        expiresAt: null,
+        status: "manual",
+        message:
+          "Alice Blue login opened. Redirect URI is invalid in account settings, so use Manual Login with the redirected URL.",
+      };
+    }
+
+    const host = redirectUrl.hostname.toLowerCase();
+    const callbackPort = Number(redirectUrl.port || 0);
+    if (redirectUrl.protocol !== "http:" || !["localhost", "127.0.0.1"].includes(host) || !callbackPort) {
+      return {
+        url: authorizeUrl,
+        redirectUri,
+        stateValue: null,
+        expiresAt: null,
+        status: "manual",
+        message:
+          "Alice Blue login opened. Auto-callback capture needs local redirect URI with explicit port (http://localhost:<port>/...). Use Manual Login otherwise.",
+      };
+    }
+
+    await this.cancelAuthFlow(id, true);
+    const timeoutMs = Math.max(60000, toNumber(options.timeoutMs, 240000));
+    const flow = {
+      accountId: id,
+      stateValue: null,
+      status: "waiting_callback",
+      message: "Waiting for Alice Blue callback",
+      startedAt: nowIso(),
+      updatedAt: nowIso(),
+      expiresAt: new Date(Date.now() + timeoutMs).toISOString(),
+      server: null,
+      timer: null,
+    };
+    this.authFlows.set(id, flow);
+
+    const callbackPath = redirectUrl.pathname || "/";
+    const callbackHost = host;
+    const server = http.createServer(async (req, res) => {
+      try {
+        const requestUrl = new URL(req.url, `${redirectUrl.protocol}//${redirectUrl.host}`);
+        const rawReqUrl = String(req.url || "");
+        if (requestUrl.pathname !== callbackPath) {
+          res.statusCode = 404;
+          res.end("Not found");
+          return;
+        }
+
+        const responseError =
+          requestUrl.searchParams.get("error") ||
+          requestUrl.searchParams.get("emsg") ||
+          requestUrl.searchParams.get("message");
+        const authCode =
+          extractQueryParamPreservePlus(rawReqUrl, ["authCode", "authcode", "auth_code", "code"]) ||
+          requestUrl.searchParams.get("authCode") ||
+          requestUrl.searchParams.get("authcode") ||
+          requestUrl.searchParams.get("auth_code") ||
+          requestUrl.searchParams.get("code");
+        const userId =
+          extractQueryParamPreservePlus(rawReqUrl, ["userId", "userid", "user_id", "uid"]) ||
+          requestUrl.searchParams.get("userId") ||
+          requestUrl.searchParams.get("userid") ||
+          requestUrl.searchParams.get("user_id") ||
+          requestUrl.searchParams.get("uid");
+
+        if (responseError) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(authHtml("error", `Alice Blue returned error: ${responseError}`));
+          await this.finalizeAuthFlow(id, "error", `Alice Blue callback error: ${responseError}`);
+          return;
+        }
+
+        if (!authCode || !userId) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(authHtml("error", "Missing authCode or userId in callback."));
+          await this.finalizeAuthFlow(id, "error", "Missing authCode or userId in callback");
+          return;
+        }
+
+        try {
+          await this.loginAccount(id, {
+            authCode,
+            userId,
+            redirectedUrl: requestUrl.toString(),
+          });
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(authHtml("success", "Alice Blue account logged in successfully."));
+          await this.finalizeAuthFlow(id, "success", "Alice Blue authentication successful");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Login failed";
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(authHtml("error", message));
+          await this.finalizeAuthFlow(id, "error", message);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unexpected callback error";
+        try {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(authHtml("error", message));
+        } catch (_inner) {
+          // ignore
+        }
+        await this.finalizeAuthFlow(id, "error", message);
+      }
+    });
+
+    server.on("error", async (error) => {
+      const message = error instanceof Error ? error.message : "Unable to start callback server";
+      await this.finalizeAuthFlow(id, "error", message);
+    });
+
+    await new Promise((resolve, reject) => {
+      server.listen(callbackPort, callbackHost, () => resolve());
+      server.once("error", (error) => reject(error));
+    }).catch(async (error) => {
+      const message =
+        error instanceof Error
+          ? `Cannot start local callback server on ${callbackHost}:${callbackPort} - ${error.message}`
+          : "Cannot start local callback server";
+      await this.finalizeAuthFlow(id, "error", message);
+      throw new Error(message);
+    });
+
+    const liveFlow = this.authFlows.get(id);
+    if (liveFlow) {
+      liveFlow.server = server;
+      liveFlow.timer = setTimeout(async () => {
+        await this.finalizeAuthFlow(id, "timed_out", "Authentication timed out");
+      }, timeoutMs);
+    }
+
+    this.writeAudit({
+      type: "auth_flow_start",
+      accountId: id,
+      userId: account.userId,
+      redirectUri,
+      stateValue: null,
+    });
+
+    return {
+      url: authorizeUrl,
+      redirectUri,
+      stateValue: null,
+      expiresAt: liveFlow?.expiresAt || null,
+      status: liveFlow?.status || "waiting_callback",
+      message: "Waiting for Alice Blue callback",
+    };
+  }
+
   async startAuthFlow(id, options = {}) {
     const account = this.getAccountOrThrow(id);
-    if (normalizeBrokerType(account.brokerType) !== BROKER_TYPES.UPSTOX) {
-      throw new Error("Auto auth flow is available only for Upstox accounts");
+    const brokerType = normalizeBrokerType(account.brokerType);
+    if (brokerType === BROKER_TYPES.ALICE_BLUE) {
+      return this.startAliceAuthFlow(id, options);
+    }
+    if (brokerType !== BROKER_TYPES.UPSTOX) {
+      throw new Error(
+        `Auto auth flow is not available for ${brokerLabel(brokerType)} accounts`
+      );
     }
     const redirectUri = String(account.credentials?.redirectUri || "").trim();
     if (!redirectUri) {
@@ -661,6 +925,7 @@ class TradeEngine {
     const server = http.createServer(async (req, res) => {
       try {
         const requestUrl = new URL(req.url, `${redirectUrl.protocol}//${redirectUrl.host}`);
+        const rawReqUrl = String(req.url || "");
         if (requestUrl.pathname !== callbackPath) {
           res.statusCode = 404;
           res.end("Not found");
@@ -668,7 +933,8 @@ class TradeEngine {
         }
 
         const responseError = requestUrl.searchParams.get("error");
-        const code = requestUrl.searchParams.get("code");
+        const code =
+          extractQueryParamPreservePlus(rawReqUrl, ["code"]) || requestUrl.searchParams.get("code");
         const returnedState = requestUrl.searchParams.get("state");
 
         if (returnedState !== stateValue) {
@@ -779,12 +1045,13 @@ class TradeEngine {
         clientSecret: payload.clientSecret,
         redirectUri: payload.redirectUri,
         accessToken: payload.accessToken,
-        sessionId: payload.sessionId,
+        sessionId: payload.sessionId || payload.userSession,
+        aliceAppCode: payload.aliceAppCode || payload.appCode,
+        aliceApiSecret: payload.aliceApiSecret || payload.apiSecret || payload.aliceApiKey,
+        aliceUserId: payload.aliceUserId || payload.userId,
         tradingSid: payload.tradingSid,
         serverId: payload.serverId,
         baseUrl: payload.baseUrl,
-        aliceUserId: payload.aliceUserId,
-        aliceApiKey: payload.aliceApiKey,
         consumerKey: payload.consumerKey,
       }
     );
@@ -807,6 +1074,9 @@ class TradeEngine {
         account.credentials = {
           ...account.credentials,
           sessionId: account.accessToken || "",
+          aliceUserId: String(
+            session.aliceUserId || session.userId || account.credentials?.aliceUserId || ""
+          ).trim(),
         };
       }
       if (brokerType === BROKER_TYPES.KOTAK_NEO) {
@@ -885,7 +1155,7 @@ class TradeEngine {
     }
 
     const client = this.getClient(leader);
-    return client.searchInstruments({
+    const results = await client.searchInstruments({
       query,
       exchange: payload.exchange || "",
       exchanges: payload.exchanges || payload.exchange || "",
@@ -896,6 +1166,36 @@ class TradeEngine {
       pageNumber: 1,
       records: 20,
     });
+
+    if (typeof client.getOhlcByInstruments !== "function") {
+      return results;
+    }
+
+    try {
+      const instrumentKeys = results
+        .map((item) => String(item?.instrumentKey || "").trim())
+        .filter((value) => Boolean(value));
+      if (!instrumentKeys.length) {
+        return results;
+      }
+
+      const ohlcMap = await client.getOhlcByInstruments(instrumentKeys);
+      if (!ohlcMap || typeof ohlcMap !== "object") {
+        return results;
+      }
+      return results.map((item) => {
+        const key = String(item?.instrumentKey || "").trim();
+        if (!key || !ohlcMap[key]) {
+          return item;
+        }
+        return {
+          ...item,
+          ohlc: ohlcMap[key],
+        };
+      });
+    } catch (_error) {
+      return results;
+    }
   }
 
   normalizeOrderInput(payload) {

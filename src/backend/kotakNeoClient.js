@@ -1,3 +1,5 @@
+const { logApiCall, headersToObject } = require("./apiCallLogger");
+
 function toNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === "") {
     return fallback;
@@ -180,28 +182,75 @@ class RealKotakNeoClient {
     };
 
     let payload;
+    let requestBody = null;
     if (body !== undefined) {
       if (formLike) {
         mergedHeaders["Content-Type"] = "application/x-www-form-urlencoded";
         payload = new URLSearchParams({
           jData: JSON.stringify(body),
         });
+        requestBody = body;
       } else {
         mergedHeaders["Content-Type"] = mergedHeaders["Content-Type"] || "application/json";
         payload =
           mergedHeaders["Content-Type"].includes("json") && typeof body !== "string"
             ? JSON.stringify(body)
             : body;
+        requestBody = body;
       }
     }
+    const startedAt = Date.now();
+    let response;
+    let text = "";
 
-    const response = await fetch(builtUrl.toString(), {
-      method,
-      headers: mergedHeaders,
-      body: payload,
-    });
-    const text = await response.text();
+    try {
+      response = await fetch(builtUrl.toString(), {
+        method,
+        headers: mergedHeaders,
+        body: payload,
+      });
+      text = await response.text();
+    } catch (error) {
+      logApiCall({
+        source: "broker-api",
+        broker: "kotakneo",
+        accountId: this.account?.id || null,
+        durationMs: Date.now() - startedAt,
+        request: {
+          method,
+          url: builtUrl.toString(),
+          headers: mergedHeaders,
+          query: query || null,
+          body: requestBody,
+        },
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+
     const json = parseJsonOrNull(text);
+
+    logApiCall({
+      source: "broker-api",
+      broker: "kotakneo",
+      accountId: this.account?.id || null,
+      durationMs: Date.now() - startedAt,
+      request: {
+        method,
+        url: builtUrl.toString(),
+        headers: mergedHeaders,
+        query: query || null,
+        body: requestBody,
+      },
+      response: {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: headersToObject(response.headers),
+        body: text,
+        json,
+      },
+    });
 
     if (!response.ok) {
       const detail = json?.message || json?.error || text || response.statusText || "Unknown error";
@@ -383,12 +432,53 @@ class RealKotakNeoClient {
     if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) {
       return cached.rows;
     }
+    const startedAt = Date.now();
+    let response;
+    let csvText = "";
+    try {
+      response = await fetch(fileUrl);
+      csvText = await response.text();
+    } catch (error) {
+      logApiCall({
+        source: "broker-api",
+        broker: "kotakneo",
+        accountId: this.account?.id || null,
+        durationMs: Date.now() - startedAt,
+        request: {
+          method: "GET",
+          url: fileUrl,
+          headers: {},
+          body: null,
+        },
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
-    const response = await fetch(fileUrl);
+    logApiCall({
+      source: "broker-api",
+      broker: "kotakneo",
+      accountId: this.account?.id || null,
+      durationMs: Date.now() - startedAt,
+      request: {
+        method: "GET",
+        url: fileUrl,
+        headers: {},
+        body: null,
+      },
+      response: {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: headersToObject(response.headers),
+        body: csvText,
+        json: null,
+      },
+    });
+
     if (!response.ok) {
       throw new Error(`Unable to fetch master file: ${fileUrl}`);
     }
-    const csvText = await response.text();
     const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
     if (!lines.length) {
       return [];

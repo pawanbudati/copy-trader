@@ -1,3 +1,5 @@
+const { logApiCall, headersToObject } = require("./apiCallLogger");
+
 function toNumber(value, fallback = 0) {
   if (value === null || value === undefined || value === "") {
     return fallback;
@@ -55,6 +57,28 @@ function inferInstrumentType(value) {
   return type;
 }
 
+function normalizeOhlcValue(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const open = toNumber(value.open ?? value.o ?? value.Open ?? value.OPEN, Number.NaN);
+  const high = toNumber(value.high ?? value.h ?? value.High ?? value.HIGH, Number.NaN);
+  const low = toNumber(value.low ?? value.l ?? value.Low ?? value.LOW, Number.NaN);
+  const close = toNumber(
+    value.close ?? value.c ?? value.Close ?? value.CLOSE ?? value.prev_close ?? value.previous_close,
+    Number.NaN
+  );
+  if (![open, high, low, close].every((item) => Number.isFinite(item))) {
+    return null;
+  }
+  return {
+    open: Number(open.toFixed(2)),
+    high: Number(high.toFixed(2)),
+    low: Number(low.toFixed(2)),
+    close: Number(close.toFixed(2)),
+  };
+}
+
 class RealUpstoxClient {
   constructor(account) {
     this.account = account;
@@ -95,27 +119,71 @@ class RealUpstoxClient {
     }
 
     let body = undefined;
+    let requestBody = null;
     if (options.form) {
       headers["Content-Type"] = "application/x-www-form-urlencoded";
       body = new URLSearchParams(options.form).toString();
+      requestBody = options.form;
     } else if (options.body !== undefined) {
       headers["Content-Type"] = "application/json";
       body = JSON.stringify(options.body);
+      requestBody = options.body;
+    }
+    const startedAt = Date.now();
+    let response;
+    let text = "";
+
+    try {
+      response = await fetch(url, {
+        method,
+        headers,
+        body,
+      });
+      text = await response.text();
+    } catch (error) {
+      logApiCall({
+        source: "broker-api",
+        broker: "upstox",
+        accountId: this.account?.id || null,
+        durationMs: Date.now() - startedAt,
+        request: {
+          method,
+          url,
+          headers,
+          body: requestBody,
+        },
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
 
-    const response = await fetch(url, {
-      method,
-      headers,
-      body,
-    });
-
-    const text = await response.text();
     let json = null;
     try {
       json = text ? JSON.parse(text) : null;
     } catch (_error) {
       json = null;
     }
+
+    logApiCall({
+      source: "broker-api",
+      broker: "upstox",
+      accountId: this.account?.id || null,
+      durationMs: Date.now() - startedAt,
+      request: {
+        method,
+        url,
+        headers,
+        body: requestBody,
+      },
+      response: {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        headers: headersToObject(response.headers),
+        body: text,
+        json,
+      },
+    });
 
     if (!response.ok) {
       const detail =
@@ -331,6 +399,47 @@ class RealUpstoxClient {
     const mapped = rows.map((item) => this.normalizeInstrument(item));
     mapped.forEach((item) => this.cacheInstrument(item));
     return mapped;
+  }
+
+  async getOhlcByInstruments(instrumentKeys = []) {
+    const uniqueKeys = Array.from(
+      new Set(
+        (Array.isArray(instrumentKeys) ? instrumentKeys : [])
+          .map((item) => String(item || "").trim())
+          .filter((item) => Boolean(item))
+      )
+    );
+    if (!uniqueKeys.length) {
+      return {};
+    }
+
+    const token = String(this.account.accessToken || "").trim();
+    if (!token) {
+      return {};
+    }
+
+    const params = new URLSearchParams({
+      instrument_key: uniqueKeys.join(","),
+      interval: "1d",
+    });
+    const response = await this.request(
+      "GET",
+      `${this.apiBase}/v2/market-quote/ohlc?${params.toString()}`,
+      { token }
+    );
+    const rows = response?.data && typeof response.data === "object" ? response.data : {};
+    const map = {};
+    Object.entries(rows).forEach(([key, row]) => {
+      const normalized =
+        normalizeOhlcValue(row?.ohlc) ||
+        normalizeOhlcValue(row?.OHLC) ||
+        normalizeOhlcValue(row?.marketOHLC) ||
+        normalizeOhlcValue(row);
+      if (normalized) {
+        map[String(key).trim()] = normalized;
+      }
+    });
+    return map;
   }
 
   normalizeProduct(productType) {

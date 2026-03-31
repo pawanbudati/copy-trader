@@ -7,7 +7,7 @@ const state = {
   dashboard: null,
   systemStatus: null,
   auditLogs: [],
-  themeMode: "system",
+  themeMode: "dark",
   activeTab: "accounts",
 };
 const authPollers = new Map();
@@ -31,8 +31,10 @@ const ui = {
   accClientSecret: document.getElementById("acc-client-secret"),
   accRedirectUri: document.getElementById("acc-redirect-uri"),
   accAccessToken: document.getElementById("acc-access-token"),
+  accAliceAppCode: document.getElementById("acc-alice-app-code"),
+  accAliceApiSecret: document.getElementById("acc-alice-api-secret"),
+  accAliceRedirectUri: document.getElementById("acc-alice-redirect-uri"),
   accAliceUserId: document.getElementById("acc-alice-user-id"),
-  accAliceApiKey: document.getElementById("acc-alice-api-key"),
   accAliceSessionId: document.getElementById("acc-alice-session-id"),
   accKotakConsumerKey: document.getElementById("acc-kotak-consumer-key"),
   accKotakAccessToken: document.getElementById("acc-kotak-access-token"),
@@ -313,46 +315,6 @@ function promptFormFields({
   });
 }
 
-async function promptAliceLoginDetails(account) {
-  const response = await promptFormFields({
-    title: "Alice Blue Login",
-    message: `Provide Alice login details for ${account?.userId || "account"}. Leave blank to reuse saved values.`,
-    okLabel: "Login",
-    fields: [
-      {
-        id: "aliceUserId",
-        label: "Alice User ID",
-        placeholder: "AB1234",
-      },
-      {
-        id: "aliceApiKey",
-        label: "Alice API Key",
-        type: "password",
-      },
-      {
-        id: "sessionId",
-        label: "Session ID (optional)",
-        type: "password",
-      },
-    ],
-  });
-  if (response === null) {
-    return null;
-  }
-  const sanitized = {};
-  if (response.aliceUserId) {
-    sanitized.aliceUserId = response.aliceUserId;
-  }
-  if (response.aliceApiKey) {
-    sanitized.aliceApiKey = response.aliceApiKey;
-  }
-  if (response.sessionId) {
-    sanitized.sessionId = response.sessionId;
-    sanitized.accessToken = response.sessionId;
-  }
-  return sanitized;
-}
-
 function currency(value) {
   if (value === null || value === undefined) {
     return "-";
@@ -367,6 +329,21 @@ function currency(value) {
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatMarketNumber(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "-";
+  }
+  return num.toFixed(2);
+}
+
+function formatOhlcText(ohlc) {
+  if (!ohlc || typeof ohlc !== "object") {
+    return "OHLC: -";
+  }
+  return `OHLC: O ${formatMarketNumber(ohlc.open)} | H ${formatMarketNumber(ohlc.high)} | L ${formatMarketNumber(ohlc.low)} | C ${formatMarketNumber(ohlc.close)}`;
 }
 
 function capitalize(value) {
@@ -389,7 +366,7 @@ function getSavedThemeMode() {
   } catch (_error) {
     // ignore
   }
-  return "system";
+  return "dark";
 }
 
 function saveThemeMode(mode) {
@@ -495,6 +472,11 @@ function normalizeBrokerType(value) {
   return "upstox";
 }
 
+function supportsAuthFlowForBroker(brokerType) {
+  const normalized = normalizeBrokerType(brokerType);
+  return normalized === "upstox" || normalized === "aliceblue";
+}
+
 function setRequired(input, required) {
   if (!input) {
     return;
@@ -510,8 +492,9 @@ function applyBrokerFieldVisibility() {
   });
 
   setRequired(ui.accClientId, brokerType === "upstox");
-  setRequired(ui.accAliceUserId, brokerType === "aliceblue");
-  setRequired(ui.accAliceApiKey, brokerType === "aliceblue");
+  setRequired(ui.accAliceAppCode, brokerType === "aliceblue");
+  setRequired(ui.accAliceApiSecret, brokerType === "aliceblue");
+  setRequired(ui.accAliceRedirectUri, false);
   setRequired(ui.accKotakConsumerKey, brokerType === "kotakneo");
 }
 
@@ -519,9 +502,12 @@ function readCredentialsFromForm() {
   const brokerType = normalizeBrokerType(ui.accBrokerType.value);
   if (brokerType === "aliceblue") {
     return {
+      aliceAppCode: String(ui.accAliceAppCode.value || "").trim(),
+      aliceApiSecret: String(ui.accAliceApiSecret.value || "").trim(),
+      redirectUri: String(ui.accAliceRedirectUri.value || "").trim(),
       aliceUserId: String(ui.accAliceUserId.value || "").trim(),
-      aliceApiKey: String(ui.accAliceApiKey.value || "").trim(),
       sessionId: String(ui.accAliceSessionId.value || "").trim(),
+      accessToken: String(ui.accAliceSessionId.value || "").trim(),
     };
   }
   if (brokerType === "kotakneo") {
@@ -548,8 +534,10 @@ function resetBrokerInputs() {
   ui.accClientSecret.value = "";
   ui.accRedirectUri.value = "";
   ui.accAccessToken.value = "";
+  ui.accAliceAppCode.value = "";
+  ui.accAliceApiSecret.value = "";
+  ui.accAliceRedirectUri.value = "";
   ui.accAliceUserId.value = "";
-  ui.accAliceApiKey.value = "";
   ui.accAliceSessionId.value = "";
   ui.accKotakConsumerKey.value = "";
   ui.accKotakAccessToken.value = "";
@@ -672,7 +660,7 @@ function authFlowText(account) {
   if (!account.authFlow) {
     return "idle";
   }
-  if (normalizeBrokerType(account.brokerType) !== "upstox" && account.authFlow.status === "idle") {
+  if (!supportsAuthFlowForBroker(account.brokerType) && account.authFlow.status === "idle") {
     return "manual";
   }
   return account.authFlow.status === "idle"
@@ -766,7 +754,7 @@ function renderAccounts() {
       const statusClass = acc.status === "error" ? "pill error" : "pill";
       const roleClass = acc.role === "leader" ? "pill leader" : "pill";
       const brokerType = normalizeBrokerType(acc.brokerType);
-      const supportsAuthUrl = brokerType === "upstox";
+      const supportsAuthUrl = supportsAuthFlowForBroker(brokerType);
       const actions = [
         accountActionButton({
           action: "auth",
@@ -817,6 +805,7 @@ function renderSearchResults() {
         <div>
           <strong>${item.tradingSymbol || item.symbol}</strong><br />
           <small>${item.exchange} | ${item.segment || "-"} | ${item.type || "-"} | lot ${item.lotSize || "-"}</small><br />
+          <small>${formatOhlcText(item.ohlc)}</small><br />
           <small>${item.instrumentKey}</small>
         </div>
         <div class="item-actions">
@@ -1115,6 +1104,26 @@ function parseLoginHint(hint, brokerType = "upstox") {
     }
   }
   const normalizedBroker = normalizeBrokerType(brokerType);
+  if (normalizedBroker === "aliceblue") {
+    if (raw.includes("|")) {
+      const [authCode, userId] = raw.split("|").map((item) => item.trim());
+      return {
+        authCode: authCode || "",
+        userId: userId || "",
+      };
+    }
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      return { redirectedUrl: raw };
+    }
+    if (raw.includes("authCode=") || raw.includes("userId=") || raw.includes("authcode=") || raw.includes("userid=")) {
+      return { redirectedUrl: raw };
+    }
+    const jwtLikeSession = raw.split(".").length === 3 && raw.length > 100;
+    if (jwtLikeSession) {
+      return { accessToken: raw };
+    }
+    return { authCode: raw };
+  }
   if (normalizedBroker === "kotakneo" && raw.includes("|")) {
     const [accessToken, tradingSid, serverId] = raw.split("|").map((item) => item.trim());
     return {
@@ -1282,12 +1291,7 @@ ui.accountForm.addEventListener("submit", async (event) => {
   try {
     const brokerType = normalizeBrokerType(ui.accBrokerType.value);
     const credentials = readCredentialsFromForm();
-    const accessToken =
-      brokerType === "aliceblue"
-        ? credentials.sessionId
-        : brokerType === "kotakneo"
-          ? credentials.accessToken
-          : credentials.accessToken;
+    const accessToken = credentials.accessToken;
 
     state.accounts = await call("accounts:add", {
       name: ui.accName.value,
@@ -1340,9 +1344,29 @@ ui.accountsBody.addEventListener("click", async (event) => {
   }
   try {
     if (action === "auth") {
-      await call("accounts:startAuthFlow", { id, openBrowser: true });
-      startAuthPolling(id);
-      showToast("Browser opened. Waiting for callback...");
+      const selectedAccount = state.accounts.find((item) => item.id === id);
+      const brokerType = normalizeBrokerType(selectedAccount?.brokerType);
+      const flow = await call("accounts:startAuthFlow", {
+        id,
+        openBrowser: false,
+        openInApp: true,
+      });
+      const flowStatus = String(flow?.status || "").toLowerCase();
+      if (flowStatus.includes("waiting")) {
+        startAuthPolling(id);
+      } else {
+        stopAuthPolling(id);
+      }
+      if (flowStatus === "manual") {
+        showToast(
+          flow?.message ||
+            "Login page opened. Complete login and then use Manual Login with redirected URL."
+        );
+      } else if (brokerType === "aliceblue") {
+        showToast("Alice Blue login page opened inside the app. Waiting for callback...");
+      } else {
+        showToast("In-app login window opened. Waiting for callback...");
+      }
       return;
     }
 
@@ -1351,36 +1375,26 @@ ui.accountsBody.addEventListener("click", async (event) => {
       const brokerType = normalizeBrokerType(selectedAccount?.brokerType);
       let loginPayload = { id };
 
-      if (brokerType === "aliceblue") {
-        const aliceDetails = await promptAliceLoginDetails(selectedAccount);
-        if (aliceDetails === null) {
-          return;
-        }
-        loginPayload = {
-          ...loginPayload,
-          ...aliceDetails,
-        };
-      } else {
-        const messageByBroker = {
-          upstox:
-            "Paste auth code, full redirect URL, or access token. Keep blank to reuse saved token.",
-          kotakneo:
-            "Paste JSON (accessToken,tradingSid,serverId,consumerKey) or token|sid|serverId. Keep blank to reuse saved credentials.",
-        };
-        const hint = await promptInput({
-          title: "Manual Login Input",
-          message: messageByBroker[brokerType] || messageByBroker.upstox,
-          defaultValue: "",
-          okLabel: "Login",
-        });
-        if (hint === null) {
-          return;
-        }
-        loginPayload = {
-          ...loginPayload,
-          ...parseLoginHint(hint, brokerType),
-        };
+      const messageByBroker = {
+        upstox: "Paste auth code, full redirect URL, or access token. Keep blank to reuse saved token.",
+        aliceblue:
+          "Paste full redirected URL containing authCode and userId, or authCode|userId, or JSON with authCode/userId.",
+        kotakneo:
+          "Paste JSON (accessToken,tradingSid,serverId,consumerKey) or token|sid|serverId. Keep blank to reuse saved credentials.",
+      };
+      const hint = await promptInput({
+        title: "Manual Login Input",
+        message: messageByBroker[brokerType] || messageByBroker.upstox,
+        defaultValue: "",
+        okLabel: "Login",
+      });
+      if (hint === null) {
+        return;
       }
+      loginPayload = {
+        ...loginPayload,
+        ...parseLoginHint(hint, brokerType),
+      };
       state.accounts = await call("accounts:login", loginPayload);
       showToast("Account login completed");
     } else if (action === "leader") {

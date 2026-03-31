@@ -5,7 +5,6 @@ Desktop app for leader/follower trade replication across multiple broker account
 Supported broker types:
 
 - Upstox
-- Alice Blue
 - Kotak Neo
 
 ## Features included
@@ -14,7 +13,6 @@ Supported broker types:
 - Broker dropdown while adding accounts with broker-specific required fields.
 - API routing by account broker type:
   - Upstox accounts use Upstox APIs.
-  - Alice Blue accounts use Alice Blue APIs.
   - Kotak Neo accounts use Kotak Neo APIs.
 - Copy trading: place from leader -> replicate to followers.
 - Exit leader trade -> cascade exit to followers.
@@ -30,7 +28,6 @@ Supported broker types:
 - Emergency stop for follower copy.
 - Audit logs + clear logs action.
 - In-app modal dialogs for login/risk/confirm flows (no native `prompt()` dependency).
-- Dedicated Alice Blue login form modal with separate fields.
 - Tabbed UI: Accounts, Search, Trade, Dashboard, Audit.
 - Theme modes: `System`, `Light`, `Dark`.
 
@@ -43,7 +40,6 @@ Supported broker types:
 - `src/backend/brokers.js`: broker constants and normalization.
 - `src/backend/brokerFactory.js`: broker client router.
 - `src/backend/upstoxClient.js`: Upstox live client.
-- `src/backend/aliceBlueClient.js`: Alice Blue live client.
 - `src/backend/kotakNeoClient.js`: Kotak Neo live client.
 - `src/backend/mockBrokerClient.js`: mock adapter for safe local testing.
 - `src/backend/auditLogger.js`: append-only audit logger.
@@ -73,7 +69,6 @@ set USE_MOCK_BROKER=false && cmd /c npm start
 
 - `UPSTOX_API_BASE` (default `https://api.upstox.com`)
 - `UPSTOX_ORDER_BASE` (default `https://api-hft.upstox.com`)
-- `ALICE_BLUE_API_BASE` (default `https://ant.aliceblueonline.com/rest/AliceBlueAPIService/api/`)
 - `KOTAK_NEO_SESSION_BASE` (default `https://mis.kotaksecurities.com`)
 - `KOTAK_NEO_TRADING_BASE` (default `https://mis.kotaksecurities.com`)
 - `KOTAK_NEO_FIN_KEY` (default `neotradeapi`)
@@ -83,9 +78,6 @@ set USE_MOCK_BROKER=false && cmd /c npm start
 - Upstox:
   - Supports `Auth URL` + local callback capture (`localhost` / `127.0.0.1` redirect with explicit port).
   - Also supports manual login by code/redirect URL/access token.
-- Alice Blue:
-  - Manual login supports session ID directly.
-  - If session ID is missing, client attempts session generation using Alice user ID + API key.
 - Kotak Neo:
   - Manual login supports:
     - `accessToken|tradingSid|serverId`

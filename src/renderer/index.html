@@ -69,9 +69,11 @@
                 </div>
 
                 <div class="broker-fields-group hidden" data-broker="aliceblue">
-                  <label>Alice User ID <input id="acc-alice-user-id" placeholder="AB1234" /></label>
-                  <label>Alice API Key <input id="acc-alice-api-key" type="password" /></label>
-                  <label>Session ID (optional) <input id="acc-alice-session-id" type="password" /></label>
+                  <label>Alice App Code <input id="acc-alice-app-code" placeholder="Activated app code" /></label>
+                  <label>Alice API Secret <input id="acc-alice-api-secret" type="password" /></label>
+                  <label>Alice Redirect URI (optional) <input id="acc-alice-redirect-uri" placeholder="http://localhost:3000/callback" /></label>
+                  <label>Alice User ID (optional) <input id="acc-alice-user-id" placeholder="AB1234" /></label>
+                  <label>Alice Session ID (optional) <input id="acc-alice-session-id" type="password" /></label>
                 </div>
 
                 <div class="broker-fields-group hidden" data-broker="kotakneo">
@@ -109,7 +111,10 @@
               </form>
               <small class="hint-text">
                 Login flow: <strong>Upstox</strong> supports Auth URL + local callback capture.
-                <strong>Alice Blue</strong> and <strong>Kotak Neo</strong> usually use manual Login with session/token details.
+                <strong>Alice Blue</strong> opens <code>https://ant.aliceblueonline.com/?appcode=...</code>, then exchanges
+                <code>authCode + userId + apiSecret</code> as <code>checkSum</code> at
+                <code>https://a3.aliceblueonline.com/open-api/od/v1/vendor/getUserDetails</code> (legacy endpoint is also supported).
+                <strong>Kotak Neo</strong> uses manual Login with token/session details.
               </small>
             </section>
 

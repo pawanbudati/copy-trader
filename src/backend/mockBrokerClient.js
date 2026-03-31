@@ -51,6 +51,22 @@ function priceForSymbol(symbol) {
   return Number((base * (1 + drift)).toFixed(2));
 }
 
+function buildMockOhlc(symbol) {
+  const last = priceForSymbol(symbol);
+  const swing = Number((last * 0.012).toFixed(2));
+  const bias = (hashCode(symbol) % 5) - 2;
+  const open = Number((last - swing * 0.35 + bias * 0.1).toFixed(2));
+  const high = Number((Math.max(open, last) + swing * 0.75).toFixed(2));
+  const low = Number((Math.min(open, last) - swing * 0.75).toFixed(2));
+  const close = Number(last.toFixed(2));
+  return {
+    open,
+    high,
+    low,
+    close,
+  };
+}
+
 function ensureState(accountId) {
   if (!accountState.has(accountId)) {
     accountState.set(accountId, {
@@ -152,6 +168,24 @@ class MockBrokerClient {
       return exchangeMatch && segmentMatch && typeMatch && textMatch;
     });
     return filtered.slice(0, 60).map((item) => this.toInstrument(item));
+  }
+
+  async getOhlcByInstruments(instrumentKeys = []) {
+    const keyMap = new Map();
+    instruments.forEach((item) => {
+      keyMap.set(this.instrumentKey(item), item);
+    });
+    const result = {};
+    (Array.isArray(instrumentKeys) ? instrumentKeys : []).forEach((value) => {
+      const key = String(value || "").trim();
+      if (!key) {
+        return;
+      }
+      const instrument = keyMap.get(key);
+      const symbol = instrument?.tradingSymbol || instrument?.symbol || key;
+      result[key] = buildMockOhlc(symbol);
+    });
+    return result;
   }
 
   async placeOrder(order) {

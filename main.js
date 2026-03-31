@@ -4,10 +4,13 @@ const { TradeEngine } = require("./src/backend/engine");
 const { FileStore } = require("./src/backend/store");
 const { createBrokerClient } = require("./src/backend/brokerFactory");
 const { AuditLogger } = require("./src/backend/auditLogger");
+const { configureApiCallLogger } = require("./src/backend/apiCallLogger");
 
 const dataDir = path.join(app.getPath("userData"), "data");
 const storePath = path.join(dataDir, "accounts.enc");
 const auditPath = path.join(dataDir, "audit.log");
+const apiCallLogPath = path.join(dataDir, "api-calls.log");
+configureApiCallLogger(apiCallLogPath);
 const store = new FileStore(storePath);
 const auditLogger = new AuditLogger(auditPath);
 const engine = new TradeEngine({
@@ -32,6 +35,48 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, "src", "renderer", "index.html"));
+}
+
+function createAuthWindow(authUrl, redirectUri = null) {
+  if (!authUrl || !mainWindow) {
+    return;
+  }
+
+  const authWindow = new BrowserWindow({
+    parent: mainWindow,
+    modal: true,
+    width: 1000,
+    height: 800,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+
+  authWindow.once("ready-to-show", () => {
+    authWindow.show();
+  });
+
+  authWindow.webContents.on("did-finish-load", () => {
+    const currentUrl = authWindow.webContents.getURL();
+    if (redirectUri && currentUrl.startsWith(redirectUri)) {
+      setTimeout(() => {
+        if (!authWindow.isDestroyed()) {
+          authWindow.close();
+        }
+      }, 1200);
+    }
+  });
+
+  authWindow.on("closed", () => {
+    // no-op, let GC do its job
+  });
+
+  authWindow.loadURL(authUrl);
+
+  return authWindow;
 }
 
 function wireIpc() {
@@ -69,9 +114,16 @@ function wireIpc() {
     "accounts:startAuthFlow",
     safe(async (payload) => {
       const result = await engine.startAuthFlow(payload.id, payload);
-      if (payload.openBrowser !== false) {
+
+      const openInApp = Boolean(payload.openInApp);
+      const openExternalBrowser = payload.openBrowser !== false;
+
+      if (openInApp) {
+        createAuthWindow(result.url, result.redirectUri || "");
+      } else if (openExternalBrowser) {
         await shell.openExternal(result.url);
       }
+
       return result;
     })
   );
