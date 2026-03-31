@@ -150,40 +150,46 @@
         </div>
 
         <div class="tab-panel" data-tab-panel="search">
-          <section class="card">
-            <h2>Instrument Search</h2>
-            <div class="search-row two">
-              <input id="search-query" placeholder="NIFTY / BANKNIFTY / strike / stock" />
-              <select id="search-exchanges">
-                <option value="">All Exchanges</option>
-                <option value="NSE">NSE</option>
-                <option value="BSE">BSE</option>
-                <option value="MCX">MCX</option>
-              </select>
-            </div>
-            <div class="search-row">
-              <select id="search-segments">
-                <option value="">All Segments</option>
-                <option value="INDEX">INDEX</option>
-                <option value="FO">FO</option>
-                <option value="OPT">OPT</option>
-                <option value="EQ">EQ</option>
-              </select>
-              <select id="search-types">
-                <option value="">All Types</option>
-                <option value="CE">CE</option>
-                <option value="PE">PE</option>
-                <option value="FUT">FUT</option>
-                <option value="EQ">EQ</option>
-                <option value="INDEX">INDEX</option>
-              </select>
-              <input id="search-expiry" placeholder="expiry (optional, e.g. current_week or 2026-04-30)" />
-            </div>
-            <small>Search runs automatically while typing (debounced).</small>
-            <div id="search-results" class="list"></div>
-            <h3 class="subheading">Favorites</h3>
-            <div id="favorites-list" class="list"></div>
-          </section>
+          <div class="search-main-layout">
+            <section class="card search-main-card">
+              <h2>Instrument Search</h2>
+              <div class="search-row two">
+                <input id="search-query" placeholder="NIFTY / BANKNIFTY / strike / stock" />
+                <select id="search-exchanges">
+                  <option value="">All Exchanges</option>
+                  <option value="NSE">NSE</option>
+                  <option value="BSE">BSE</option>
+                  <option value="MCX">MCX</option>
+                </select>
+              </div>
+              <div class="search-row">
+                <select id="search-segments">
+                  <option value="">All Segments</option>
+                  <option value="INDEX">INDEX</option>
+                  <option value="FO">FO</option>
+                  <option value="OPT">OPT</option>
+                  <option value="EQ">EQ</option>
+                </select>
+                <select id="search-types">
+                  <option value="">All Types</option>
+                  <option value="CE">CE</option>
+                  <option value="PE">PE</option>
+                  <option value="FUT">FUT</option>
+                  <option value="EQ">EQ</option>
+                  <option value="INDEX">INDEX</option>
+                </select>
+                <input id="search-expiry" placeholder="expiry (optional, e.g. current_week or 2026-04-30)" />
+              </div>
+              <small>Search runs automatically while typing (debounced).</small>
+              <h3 class="subheading">Search Results</h3>
+              <div id="search-results" class="list"></div>
+            </section>
+
+            <section class="card favorites-card">
+              <h2>Favorites</h2>
+              <div id="favorites-list" class="list"></div>
+            </section>
+          </div>
         </div>
 
         <div class="tab-panel" data-tab-panel="trade">
